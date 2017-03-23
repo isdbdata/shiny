@@ -5,6 +5,10 @@ library(shinythemes)
 library(data.table)
 library(ggplot2)
 
+#all indicator
+wdi_ind <- readRDS('wdi.rds')
+
+
 #following are regions with iso2c country codes we are interested to monitor
 IDB <- "AF, AL, DZ, AZ, BH, BD, BJ, BN, BF, CM, TD, KM, CI, DJ, EG, GA, GM, GN, GW, GY, ID, IR, IQ, JO, KZ, KW, KG, LB, LY, MY, MV, ML, MR, MA, MZ, NE, NG, OM, PK, PS, QA, SA, SN, SL, SO, SD, SR, SY, TJ, TG, TN, TR, TM, AE, UG, UZ, YE"
 IDB_MENA_18 <- "DZ, BH, EG, IR, IQ, JO, KW, LB, LY, MA, OM, PS, QA, SA, SY, TN, AE, YE"
@@ -48,9 +52,10 @@ aggregate_idb <- function(indicator, weight) {
 server <- function(input,output, session){
   
   dat<- eventReactive(input$update,{
+    selection <- wdi_ind$indicatorID[wdi_ind$indicator==input$indicator]
       withProgress({
         setProgress(message = "fetching indicators for IDB MC data ...")
-        df<- wb(indicator=input$indicator, country = strsplit(IDB, ", ")[[1]], 
+        df<- wb(indicator=selection, country = strsplit(IDB, ", ")[[1]], 
             start = input$year[1], end = input$year[2])
       })
     #taking only relevant columns
@@ -70,9 +75,10 @@ server <- function(input,output, session){
     countries<- countries[order(countries$country),]
     
     #and now the weights
+    weight_selection <- wdi_ind$indicatorID[wdi_ind$indicator==input$weight]
     withProgress({
       setProgress(message = "fetching weight indicator ...")
-      my_weight<- wb(indicator=input$weight, country = strsplit(IDB, ", ")[[1]], 
+      my_weight<- wb(indicator=weight_selection, country = strsplit(IDB, ", ")[[1]], 
                      start = input$year[1], end = input$year[2])
     })
     
@@ -99,7 +105,7 @@ server <- function(input,output, session){
     #now the some World statistics
     withProgress({
       setProgress(message = "fetching world stats ...")
-      world<- wb(indicator=input$indicator, country = strsplit(WORLD, ", ")[[1]], 
+      world<- wb(indicator=selection, country = strsplit(WORLD, ", ")[[1]], 
                      start = input$year[1], end = input$year[2])
     })
     world<- world[,c(1,2,6)]
@@ -149,8 +155,8 @@ ui <- fluidPage(theme=shinytheme("cosmo"),
   titlePanel("Analyse macro-economic indicators for the IDB member countries"),
   sidebarLayout(
     sidebarPanel(
-      textInput(inputId = "indicator", "Enter the Indicator Code:", value = "SH.DYN.MORT"),
-      textInput(inputId = "weight", "Enter the Weight indicator Code:", value = "SP.POP.TOTL"),
+      selectInput(inputId = "indicator", "Select indicator:", wdi_ind$indicator, selected = 'Mortality rate, under-5 (per 1,000 live births)'),
+      selectInput(inputId = "weight", "Select weight indicator:", wdi_ind$indicator, selected = 'Population, total'),
       sliderInput(inputId = "year", label = "Select start and end years:", min=1960, max=2020, value=c(2010,2015), sep ='', ticks = F ),
       actionButton(inputId = "update", label = "Fetch Data"),
       downloadLink("downloadData", " Download")

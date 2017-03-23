@@ -5,7 +5,7 @@ library(shinythemes)
 library(data.table)
 library(ggplot2)
 
-
+#following are regions with iso2c country codes we are interested to monitor
 IDB <- "AF, AL, DZ, AZ, BH, BD, BJ, BN, BF, CM, TD, KM, CI, DJ, EG, GA, GM, GN, GW, GY, ID, IR, IQ, JO, KZ, KW, KG, LB, LY, MY, MV, ML, MR, MA, MZ, NE, NG, OM, PK, PS, QA, SA, SN, SL, SO, SD, SR, SY, TJ, TG, TN, TR, TM, AE, UG, UZ, YE"
 IDB_MENA_18 <- "DZ, BH, EG, IR, IQ, JO, KW, LB, LY, MA, OM, PS, QA, SA, SY, TN, AE, YE"
 IDB_Sub_Saharan_Africa_22 <- "BJ, BF, CM, TD, KM, CI, DJ, GA, GM, GN, GW, ML, MR, MZ, NE, NG, SN, SL, SO, SD, TG, UG"
@@ -18,6 +18,9 @@ IDB_Non_Fuel_39 <- "AF, AL, BD, BJ, BF, CM, KM, CI, DJ, EG, GM, GN, GW, GY, ID, 
 WORLD <- "WLD, HIC, LMY, LDC"
 
 #global functions
+
+#this function takes input a region, and two indicator codes: target indicator and weight indicator
+# it uses 'weighted.mean' function and returns a data.table with one observation
 aggregate <- function(region,indicator, weight) {
   ind_dt <- data.table(indicator=indicator$indicator, country=indicator$country, country.id=indicator$iso2c,year=indicator$date, value=indicator$value)
   wgt_dt <-  data.table(indicator=weight$indicator, country=weight$country,country.id=indicator$iso2c, year=weight$date, value=weight$value)
@@ -29,6 +32,8 @@ aggregate <- function(region,indicator, weight) {
   return(result)
 }
 
+# this is same as aggregate function, except it does not take any region country codes
+# rather it cosiders all the 57 member countries and creates the IDB aggregate
 aggregate_idb <- function(indicator, weight) {
   ind_dt <- data.table(indicator=indicator$indicator, country=indicator$country, year=indicator$date, value=indicator$value)
   ind_ans<- ind_dt[,.(indicator,country,value),by=year]
@@ -44,7 +49,7 @@ server <- function(input,output, session){
   
   dat<- eventReactive(input$update,{
       withProgress({
-        setProgress(message = "fetching data ...")
+        setProgress(message = "fetching indicators for IDB MC data ...")
         df<- wb(indicator=input$indicator, country = strsplit(IDB, ", ")[[1]], 
             start = input$year[1], end = input$year[2])
       })
@@ -65,8 +70,12 @@ server <- function(input,output, session){
     countries<- countries[order(countries$country),]
     
     #and now the weights
-    my_weight<- wb(indicator=input$weight, country = strsplit(IDB, ", ")[[1]], 
-                   start = input$year[1], end = input$year[2])
+    withProgress({
+      setProgress(message = "fetching weight indicator ...")
+      my_weight<- wb(indicator=input$weight, country = strsplit(IDB, ", ")[[1]], 
+                     start = input$year[1], end = input$year[2])
+    })
+    
     
     idb_aggregates <- aggregate_idb(my_target, my_weight)
     idb_aggregates1 <- rbind(idb_aggregates, 
@@ -85,6 +94,21 @@ server <- function(input,output, session){
     idb_aggregates <- idb_aggregates[order(idb_aggregates$s),]
     idb_aggregates$s <- NULL
     idb_aggregates<-as.data.frame(idb_aggregates)
+    
+    
+    #now the some World statistics
+    withProgress({
+      setProgress(message = "fetching world stats ...")
+      world<- wb(indicator=input$indicator, country = strsplit(WORLD, ", ")[[1]], 
+                     start = input$year[1], end = input$year[2])
+    })
+    world<- world[,c(1,2,6)]
+    world <- spread(world,date, value )
+    world$s<-c(2,4,3,1)
+    world<-world[order(world$s),]
+    world$s<-NULL
+    colnames(world)[1]<-"economy"
+    idb_aggregates<- rbind(idb_aggregates, world)
     list(countries, idb_aggregates, ind_name, idb_aggregates1)
     })
   
@@ -129,7 +153,7 @@ ui <- fluidPage(theme=shinytheme("cosmo"),
       textInput(inputId = "weight", "Enter the Weight indicator Code:", value = "SP.POP.TOTL"),
       sliderInput(inputId = "year", label = "Select start and end years:", min=1960, max=2020, value=c(2010,2015), sep ='', ticks = F ),
       actionButton(inputId = "update", label = "Fetch Data"),
-      downloadLink("downloadData", "Download")
+      downloadLink("downloadData", " Download")
     ),
     
     mainPanel(
